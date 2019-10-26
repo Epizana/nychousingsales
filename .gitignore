@@ -32,6 +32,8 @@
 
 # OS generated files #
 ######################
+.Rhistory
+.RData
 .DS_Store
 .DS_Store?
 ._*
