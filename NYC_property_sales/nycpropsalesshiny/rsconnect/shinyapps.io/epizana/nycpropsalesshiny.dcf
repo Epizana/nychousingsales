@@ -1,0 +1,12 @@
+name: nycpropsalesshiny
+title: nycpropsalesshiny
+username:
+account: epizana
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 1396465
+bundleId: 2548941
+url: https://epizana.shinyapps.io/nycpropsalesshiny/
+when: 1572375075.74483
+asMultiple: FALSE
+asStatic: FALSE

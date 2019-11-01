@@ -1,0 +1,252 @@
+---
+title: "aptsalesprocessing"
+author: "Emanuel Pizana"
+date: "10/25/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# libraries
+
+``````{r, message=FALSE, warning=FALSE}
+library(readr)
+library(dplyr)
+library(data.table)
+library(ggplot2)
+library(RColorBrewer)
+library(plotly)
+library(shiny)
+library(shinydashboard)
+```
+
+
+#load csv
+```{r load_data, cache=TRUE, warning=TRUE, message=FALSE}
+loadcolumns = 'iccfciiiiifciDifffiiccc'
+combined = read_csv('combined.csv', col_names = TRUE, col_types = loadcolumns)
+combined = as.data.frame(combined, row.names = combined$Index)
+rownames(combined) = combined$Index
+combined$Index = NULL
+colnames(combined) = tolower(colnames(combined))
+colnames(combined) = gsub(' ','.',colnames(combined))
+
+head(combined)
+dim(combined)
+
+
+building_sales = read_csv('buildsales.csv', col_names = TRUE, col_types = loadcolumns)
+building_sales = as.data.frame(building_sales, row.names = building_sales$Index)
+rownames(building_sales) = building_sales$Index
+building_sales$Index = NULL
+head(building_sales)
+dim(building_sales)
+
+aptsales = read_csv('aptsales.csv', col_names = TRUE, col_types = loadcolumns)
+aptsales = as.data.frame(aptsales, row.names = aptsales$Index)
+#aptsales$Index = NULL
+rownames(aptsales) = aptsales$Index
+aptsales$Index = NULL
+head(aptsales)
+dim(aptsales)
+
+colnames(combined)
+```
+
+## Manipulation
+
+
+```{r}
+
+
+####ALL TRANSACTIONS#######
+
+
+totalNYC = combined %>% group_by(.,sale.year) %>% summarise(., mean_price = mean((sale.price)))
+
+
+coopNYC = combined %>% filter(., type == 'Co-op', construction == 'Pre-prewar') %>% group_by(.,sale.year) %>% summarise(., mean_price = mean((sale.price)))
+
+
+plot_ly(coopNYC, x = ~sale.year, y = ~mean_price, type = 'scatter', mode = 'lines') %>% 
+                    layout(title = "Average Price Over Time",
+                    xaxis = list(title = 'Sale Year'),
+                    yaxis = list(title = 'Average Price $'))
+
+
+plot_ly(totalNYC, x = ~sale.year, y = ~mean_price, type = 'scatter', mode = 'lines') %>% 
+                    layout(title = "Average Price Over Time",
+                    xaxis = list(title = 'Sale Year'),
+                    yaxis = list(title = 'Average Price $'))
+
+
+ 
+
+  
+
+
+###+++Apt Sales is filtered for ALL RESIDENTIAL BUILDINGS
+#WITH MULTIPLE TRANSACTIONS. USED FOR UNIT PRICE ANALYSIS, and BUILDING ANALYSIS, down below!+++###
+
+aptsales1 = combined[duplicated(combined$main_address) | duplicated(combined$main_address, fromLast = TRUE), ] %>% filter(., !is.na(apt_no)) %>% arrange(., main_address, sale.price)
+
+dim(aptsales1)
+summary(aptsales1)
+
+
+# ++++++count and average price of buildings only +++++++++++
+avg_price_building = combined[duplicated(combined$building_address) | duplicated(combined$building_address, fromLast = TRUE), ] %>% group_by(.,building_address) %>% summarise(.,avg_price = mean(sale.price)) %>% arrange(., desc(avg_price))
+  
+building_counts = combined[duplicated(combined$building_address) | duplicated(combined$building_address, fromLast = TRUE), ] %>% group_by(.,building_address) %>% summarise(., num_sold = n()) %>% arrange(., desc(num_sold))
+
+building_counts_price = inner_join(building_counts,avg_price_building, by='building_address') 
+
+
+#++++++++CONDOS ONLY WITH MULTIPLE SALES, FROM aptsales1 +++++++++
+
+#master file filtered for condos.
+condosales = aptsales1 %>% filter(., type == 'Condo')
+
+
+
+#main_address counts in desc order
+condobycount = condosales %>% group_by(.,main_address) %>% summarise(.,condosalescount = n()) %>% arrange(., desc(condosalescount))
+condobycount
+
+#grouped by sales dates
+condobydate = condosales %>% group_by(., main_address, sale.date) %>%
+  arrange(.,main_address, sale.date)
+
+condobydate
+
+#+++$$$$$$$$$$++++++++P&L by condo++++++$$$$$$$$$$$$$$
+
+#use data.table to set up P&L view 
+condopl = as.data.table(condobydate)
+setnames(condopl, old = c("sale.date", "sale.price", "sale.year"), new = c('purchase.date',"purchase.price","purchase.year"))
+
+condopl[, sell_date:=shift(purchase.date, 1, type='lead'), by=main_address]
+condopl[, sell_price:=shift(purchase.price, 1, type='lead'), by=main_address]
+condopl[, sale_year:=shift(purchase.year, 1, type='lead'), by=main_address]
+
+#fill na sell_price with 0s
+condopl[is.na(sell_price), sell_price := 0]
+
+#calculate P&L, exclude properties still held by buyer, and determine holding period
+condopl = as.data.frame(condopl)
+condopl = condopl %>% filter(., sell_price != 0) %>% mutate(., price_change = sell_price - purchase.price, days = as.numeric(sell_date - purchase.date), hldg_return = (price_change/purchase.price))
+
+#there are extreme negative outliers with price change, due to
+#listings that purchase the entire building attributed to a single
+#apartment. Also, some transactions are bought and sold within a span of zero days or within 60 days. Take these out.
+
+plmin = quantile(condopl$price_change, 0.0005)
+condopl = condopl %>% filter(., price_change > plmin, days >= 60)
+
+condopl %>% ggplot () +
+  geom_density(aes(x = days, fill = borough, alpha = .05))
+
+#dim(aptsales1)
+#summary(aptsales1)
+
+condobydate
+
+condosales %>% filter(., main_address == '25 MURRAY STREET, 2D') %>% arrange(., sale.date)
+
+combined %>% filter(., grepl("170 EAST END",main_address))
+
+condopl
+
+```
+
+```{r}
+
+
+((1.0348837*1.0898876)^(365/(2082+448)))-1
+1
+
+condopl = condopl %>% filter(., days > 365) %>% mutate(., rtrn_factor = hldg_return + 1) #%>% group_by(., main_address) %>% summarise(.,total_days = sum(days))
+
+#filter for holding periods of at least a year
+testdays = condopl %>% filter(., days > 365) %>% group_by(., main_address) %>% summarise(.,total_days = sum(days))
+
+testmultreturns = condopl %>% group_by(., main_address) %>% mutate(., prdrtrns = prod(rtrn_factor)) %>% select(., main_address, prdrtrns) %>% unique()
+testmultreturns
+
+testdaysreturns = inner_join(testmultreturns, testdays, by = 'main_address')
+
+testdaysreturns = testdaysreturns %>% mutate(., annual_return = round(((prdrtrns^(365/total_days))-1),3)) %>% arrange(., desc(annual_return))
+testdaysreturns
+
+testdaysreturns$prdrtrns = NULL
+
+forgraph = testdaysreturns
+forgraph = forgraph %>% select(., main_address, total_days, annual_return)
+forgraph
+
+colnames(condopl)
+
+
+
+# lenmult = dim(testmultreturns)[1]
+# lendays = dim(testdays)[1]
+# 
+# lenmult == lendays
+
+
+  
+
+
+
+condopl %>% filter(., main_address == '88 FRANKLIN STREET, PH')
+
+basics = combined %>% select(., main_address, building_address, borough, neighborhood, current.age, type, construction, year.built) %>% unique() %>% arrange(., main_address)
+
+basics
+
+testjoin = left_join(forgraph,basics, by = 'main_address')
+testjoin
+
+```
+
+```{r}
+
+condosales %>% group_by(.,sale.year) %>% summarise(., mean_price = mean((sale.price))) %>%
+    plot_ly(., x = ~sale.year, y = ~mean_price, type = 'scatter', mode = 'lines') %>% 
+      layout(title = "Average Price Over Time",
+             xaxis = list(title = 'Sale Year'),
+             yaxis = list(title = 'Average Price $'))
+ 
+condosales %>% group_by(.,sale.year) %>% filter(., sale.year == 2018) #summarise(., mean_price = mean((sale.price)))
+
+
+aptsales1 = combined[duplicated(combined$main_address) | duplicated(combined$main_address, fromLast = TRUE), ] %>% filter(., !is.na(apt_no)) %>% arrange(., main_address, sale.price)
+
+
+adtest = combined %>% arrange(.,main_address)
+
+adtest1 = adtest[duplicated(adtest$main_address) | duplicated(adtest$main_address, fromLast = TRUE), ]
+
+adtest %>% filter(., grepl("170 EAST END",main_address)) %>% mutate(., x = dense_rank(main_address)) %>%  arrange(., main_address)
+
+
+
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r testing, echo=FALSE}
+
+age=c(18,18,18, 19, 20, 21, 30, 30, 30, 21, 21, 21)
+height=c(76.1,76.1,76.1,78.2,78.8,79.7,79.9,79.9,81.2,81.8,82.8,83.5)
+Names=c("John","John","John", "Harry", "Paul", "Paul", "Paul", "Paul", "Khan", "Khan", "Sam", "Joe")
+village <- data.frame(Names, age, height)
+village
+
+village[duplicated(village) | duplicated(village, fromLast = TRUE), ]
+
+prod(c(1,2,4,5))
+```
