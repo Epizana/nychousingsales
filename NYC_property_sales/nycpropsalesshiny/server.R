@@ -4,6 +4,7 @@ shinyServer(function(input, output, session){
   
   selection = combined
   selection3 = buildtx
+  selection4 = prctblbduil
   
   observe({
   	updatePickerInput(
@@ -13,6 +14,8 @@ shinyServer(function(input, output, session){
   		    nabenames
   		} else
   		  append(unique(combined[combined$borough == input$boroughname, 'neighborhood']),'Choose All'),
+  		  #append to the prctblbuil table
+  		  #append(unique(prctblbduil[prctblbduil$borough == input$boroughname, 'neighborhood']),'Choose All'),
   		selected = 'Choose All'
   		)})
 
@@ -50,6 +53,28 @@ shinyServer(function(input, output, session){
 	  }
   })
 
+  boroandnabepx = reactive({
+    
+    if (input$boroughname == 'Choose All' & input$nabename == 'Choose All') {
+      #selection = combined
+      selection4
+      #selection3 = buildtx
+      #selection3
+      #typeconstruct()
+    } else if (input$boroughname != 'Choose All' & input$nabename == 'Choose All') {
+      selection4 = prctblbduil %>% filter(., borough == input$boroughname)
+      selection4
+      #selection3 = buildtx %>% filter(., borough == input$boroughname)
+      #selection3
+      #typeconstruct()
+    } else if (input$boroughname != 'Choose All' & input$nabename !='Choose All') {
+      selection4 = prctblbduil %>% filter(., borough == input$boroughname, neighborhood == input$nabename)
+      selection4
+      #selection3 = buildtx %>% filter(., borough == input$boroughname, neighborhood == input$nabename)
+      #selection3
+      #typeconstruct()
+    }
+  })
   
   # typeconstruct = reactive({
   #     if (input$typename == 'Choose All' & input$constructname == 'Choose All') {
@@ -148,17 +173,16 @@ shinyServer(function(input, output, session){
     if (input$boroughname == 'Choose All' & input$nabename == 'Choose All') {
       #selection = combined
       #selection
-      selection4 = prctblbduil
       selection4
       
     } else if (input$boroughname != 'Choose All' & input$nabename == 'Choose All') {
       #selection = combined %>% filter(., borough == input$boroughname)
       #selection
-      selection4 = prctblbduil%>% filter(., borough == input$boroughname)
+      selection4 = boroandnabepx() %>% filter(., borough == input$boroughname)
       selection4
       #typeconstruct()
     } else if (input$typename != 'Choose All' & input$nabename != 'Choose All') {
-      selection4 = prctblbduil %>% filter(., borough == input$boroughname, neighborhood == input$nabename)
+      selection4 = boroandnabepx() %>% filter(., borough == input$boroughname, neighborhood == input$nabename)
       selection4
       #selection3 = buildtx %>% filter(., borough == input$boroughname, neighborhood == input$nabename)
       #selection3
@@ -181,17 +205,12 @@ shinyServer(function(input, output, session){
   
   
   output$pricechange <- renderPlotly(
-    pricetx() %>% plot_ly(., x = ~bdays, y = ~bprice_change, color = ~type) %>% 
+    boroandnabepx() %>% plot_ly(., x = ~bdays, y = ~bprice_change, color = ~type) %>% 
     layout(title = "Price Change vs. Holding Days",
            xaxis = list(title = 'Total Holding Days'),
            yaxis = list(title = 'Aggregate Price Change'))
-    
   )
   
-  
-  
-
-
   output$meanprices <- renderPlotly(
     #fourfilters
     fourfilters() %>% group_by(.,sale.year) %>% summarise(., mean_price = mean((sale.price))) %>%
